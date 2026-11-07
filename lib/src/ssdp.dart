@@ -67,16 +67,33 @@ abstract final class SsdpSearch {
   /// answer late) until the subscription is cancelled. Each (usn, st) is
   /// emitted once. [bindAddress]: the Wi-Fi address, so the search leaves
   /// through that interface and not mobile data.
+  ///
+  /// With [listenNotify] it also joins the multicast group on port 1900 and
+  /// takes the `NOTIFY ssdp:alive` announcements devices send on their own:
+  /// some TVs never answer an M-SEARCH and are only found that way (the
+  /// 0.0.x package did this; port 1900 may be taken, then only searches run).
   static Stream<SsdpResponse> search(
     List<String> targets, {
     InternetAddress? bindAddress,
     Duration interval = const Duration(seconds: 3),
     int mx = 2,
+    bool listenNotify = true,
   }) {
     RawDatagramSocket? socket;
+    RawDatagramSocket? notify;
     Timer? timer;
     final seen = <String>{};
     late final StreamController<SsdpResponse> controller;
+
+    bool wanted(SsdpResponse r) => targets.contains(SsdpTarget.all) || targets.contains(r.st);
+
+    void drain(RawDatagramSocket s, {required bool notifies}) {
+      for (var d = s.receive(); d != null; d = s.receive()) {
+        final r = SsdpResponse.parse(utf8.decode(d.data, allowMalformed: true), d.address);
+        if (r == null || (notifies && !wanted(r))) continue;
+        if (seen.add('${r.usn}|${r.st}') && !controller.isClosed) controller.add(r);
+      }
+    }
 
     void send() {
       final s = socket;
@@ -101,13 +118,14 @@ abstract final class SsdpSearch {
         try {
           final s = socket = await RawDatagramSocket.bind(bindAddress ?? InternetAddress.anyIPv4, 0);
           s.multicastHops = 4;
+          // Drain every datagram that arrived, not only the first.
           s.listen((event) {
-            if (event != RawSocketEvent.read) return;
-            // Drain every datagram that arrived, not only the first.
-            for (var d = s.receive(); d != null; d = s.receive()) {
-              final r = SsdpResponse.parse(utf8.decode(d.data, allowMalformed: true), d.address);
-              if (r != null && seen.add('${r.usn}|${r.st}') && !controller.isClosed) controller.add(r);
-            }
+            if (event == RawSocketEvent.read) drain(s, notifies: false);
+          });
+          if (listenNotify) notify = await _bindNotify(bindAddress);
+          final n = notify;
+          n?.listen((event) {
+            if (event == RawSocketEvent.read) drain(n, notifies: true);
           });
           send();
           timer = Timer.periodic(interval, (_) => send());
@@ -120,8 +138,38 @@ abstract final class SsdpSearch {
         timer?.cancel();
         socket?.close();
         socket = null;
+        notify?.close();
+        notify = null;
       },
     );
     return controller.stream;
+  }
+
+  /// Port 1900 on every address, in the group, on [address]'s interface when
+  /// given. Null when the port can't be shared.
+  static Future<RawDatagramSocket?> _bindNotify(InternetAddress? address) async {
+    RawDatagramSocket? s;
+    for (final reusePort in [true, false]) {
+      try {
+        s = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port, reuseAddress: true, reusePort: reusePort);
+        break;
+      } on Object {
+        // reusePort is unsupported on some platforms; port 1900 may be taken.
+      }
+    }
+    if (s == null) return null;
+    try {
+      NetworkInterface? interface;
+      if (address != null) {
+        for (final i in await NetworkInterface.list(type: InternetAddressType.IPv4)) {
+          if (i.addresses.contains(address)) interface = i;
+        }
+      }
+      s.joinMulticast(group, interface);
+      return s;
+    } on Object {
+      s.close();
+      return null;
+    }
   }
 }

@@ -1,3 +1,6 @@
+## 0.1.1
+- `SsdpSearch.search` also listens for `NOTIFY ssdp:alive` on port 1900 (as 0.0.x did), so devices that only announce themselves are found too. Port 1900 shared when possible (`reusePort` falls back on Android).
+
 ## 0.1.0
 - Rewritten for Dart 3 (breaking): `SsdpSearch`, `UpnpDevice`, `DlnaRenderer`, `DidlItem`, `SoapClient`.
 - Discovery reads every reply (the old loop read one datagram every 2–3 s) and no longer binds port 1900.
