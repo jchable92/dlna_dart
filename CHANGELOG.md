@@ -1,3 +1,7 @@
+## 0.1.2
+- `SsdpSearch.search(dedupe: false)` emits every answer, so a consumer whose description fetch failed (a busy TV) can retry on the next round instead of never seeing the device again.
+- `SsdpTarget.samsungRemoteControl`.
+
 ## 0.1.1
 - `SsdpSearch.search` also listens for `NOTIFY ssdp:alive` on port 1900 (as 0.0.x did), so devices that only announce themselves are found too. Port 1900 shared when possible (`reusePort` falls back on Android).
 

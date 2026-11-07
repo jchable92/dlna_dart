@@ -10,6 +10,9 @@ abstract final class SsdpTarget {
 
   /// LG webOS TVs (their second-screen API, used to open the TV's browser).
   static const webOsSecondScreen = 'urn:lge-com:service:webos-second-screen:1';
+
+  /// Samsung Tizen TVs (their remote-control receiver).
+  static const samsungRemoteControl = 'urn:samsung.com:device:RemoteControlReceiver:1';
 }
 
 /// One answer to an M-SEARCH (or a `NOTIFY ssdp:alive`).
@@ -65,7 +68,9 @@ abstract final class SsdpSearch {
 
   /// Searches for [targets] every [interval] (UDP drops packets; devices
   /// answer late) until the subscription is cancelled. Each (usn, st) is
-  /// emitted once. [bindAddress]: the Wi-Fi address, so the search leaves
+  /// emitted once; with [dedupe] off, every answer is (a consumer whose
+  /// follow-up fetch failed gets another chance on the next round).
+  /// [bindAddress]: the Wi-Fi address, so the search leaves
   /// through that interface and not mobile data.
   ///
   /// With [listenNotify] it also joins the multicast group on port 1900 and
@@ -78,6 +83,7 @@ abstract final class SsdpSearch {
     Duration interval = const Duration(seconds: 3),
     int mx = 2,
     bool listenNotify = true,
+    bool dedupe = true,
   }) {
     RawDatagramSocket? socket;
     RawDatagramSocket? notify;
@@ -91,7 +97,7 @@ abstract final class SsdpSearch {
       for (var d = s.receive(); d != null; d = s.receive()) {
         final r = SsdpResponse.parse(utf8.decode(d.data, allowMalformed: true), d.address);
         if (r == null || (notifies && !wanted(r))) continue;
-        if (seen.add('${r.usn}|${r.st}') && !controller.isClosed) controller.add(r);
+        if ((!dedupe || seen.add('${r.usn}|${r.st}')) && !controller.isClosed) controller.add(r);
       }
     }
 

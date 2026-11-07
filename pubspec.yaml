@@ -1,6 +1,6 @@
 name: dlna_dart
 description: "Pure-Dart DLNA / UPnP AV client: SSDP discovery, device descriptions and MediaRenderer control (AVTransport, RenderingControl)."
-version: 0.1.1
+version: 0.1.2
 repository: https://github.com/suconghou/dlna-dart
 publish_to: none
 environment:
