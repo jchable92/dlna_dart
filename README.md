@@ -1,44 +1,33 @@
 # dlna_dart
 
-simple dlna client
-
-## Getting Started
+Pure-Dart DLNA / UPnP AV client (no Flutter): find renderers on the LAN,
+read their descriptions and control playback.
 
 ```dart
-import 'dart:async';
-import 'package:dlna_dart/dlna.dart';
+import 'package:dlna_dart/dlna_dart.dart';
 
-main(List<String> args) async {
-  final searcher = DLNAManager();
-  final m = await searcher.start();
-  m.devices.stream.listen((deviceList) {
-    deviceList.forEach((key, value) async {
-      print(key);
-      if (value.info.friendlyName.contains('Wireless')) return;
-      print(value.info.friendlyName);
-      // final text = await value.position();
-      // final r = await value.seekByCurrent(text, 10);
-      // print(r);
-    });
-  });
-
-  // close the server,the closed server can be start by call searcher.start()
-  Timer(Duration(seconds: 30), () {
-    searcher.stop();
-    print('server closed');
-  });
-
-  // if you new search() many times , you must use start(reusePort:true)
-}
-
-
+final sub = SsdpSearch.search([SsdpTarget.mediaRenderer]).listen((r) async {
+  for (final device in await UpnpDevice.fetch(r.location)) {
+    final tv = DlnaRenderer.of(device);
+    if (tv == null) continue;
+    await tv.setUri(url, metadata: DidlItem(title: 'Movie', url: url, mimeType: 'video/mp4'));
+    await tv.play();
+  }
+});
+// … later
+await sub.cancel();
 ```
 
-**python version**
+- `SsdpSearch.search` sends M-SEARCH from an ephemeral port and reads the
+  unicast replies (no port-1900 bind, no Android multicast lock). Pass the
+  Wi-Fi address as `bindAddress` on phones so the search doesn't leave
+  through mobile data.
+- `UpnpDevice.parseAll` returns the root and embedded devices with absolute
+  service URLs (`URLBase` or the description's location).
+- `DlnaRenderer`: `setUri`, `play`, `pause`, `stop`, `seek`,
+  `transportInfo`, `positionInfo`, `mediaInfo`, volume and mute. Failures
+  are `UpnpException`s with the renderer's UPnP error code.
+- `DidlItem` builds the `CurrentURIMetaData` (title, DLNA range-seek flags,
+  duration, Samsung-style external subtitles).
 
-https://github.com/suconghou/dlna-python
-
-
-**app example**
-
-https://github.com/suconghou/u2flutter
+`dart run example/discover.dart` lists what answers on your network.
